@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+<!--  <arg name="end_effector" default="pal-gripper"/>
+  <arg name="robot" default="tiago_dual"/>
+  <arg name="simulation" default="true"/>
+  <arg name="spawn" default="true"/>
+  <arg name="controller_ns" default="tiago_energy_shaping_controller"/>
+-->
+  <arg name="simulation" default="true"/>  
+  <arg name="spawn" default="true"/>   
+  <arg name="controller_ns" default="armleft_tiago_dual_controller"/>  
+
+  <!-- Load the parameters -->
+  <group if="$(arg simulation)">  
+  	<rosparam command="load" file="$(find armleft_tiago_dual_controller)/config/armleft_tiago_dual_controller.yaml" ns="$(arg controller_ns)"/>
+  
+  </group>  
+  <!--  ns="/mhuman" /> "$(arg controller_ns)"/>  -->
+
+
+<!--  <group unless="$(arg simulation)">
+  	<rosparam command="load" file="$(find tiago_energy_shaping_controller)/config/$(arg robot)_$(arg end_effector)_gravity_compensation.yaml" ns="$(arg controller_ns)"/>
+  </group>
+-->
+  <!--Spawn the controller -->
+  <group if="$(arg spawn)"> 
+
+	<node name="$(arg controller_ns)" pkg="controller_manager" type="spawner" output="screen"  args="$(arg controller_ns) --timeout 120" />
+
+  </group>  
+
+</launch>

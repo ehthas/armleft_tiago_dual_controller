@@ -1,0 +1,4 @@
+<library path="lib/libarmleft_tiago_dual_controller">
+    <class name="armleft_tiago_dual_controller/MyEnergyShapingPositionController" type="armleft_tiago_dual_controller::MyEnergyShapingPositionController" base_class_type="controller_interface::ControllerBase" >
+    </class>
+</library>
