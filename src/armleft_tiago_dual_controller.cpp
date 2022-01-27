@@ -306,26 +306,25 @@ bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInte
    q_act_.resize(joint_names_.size());
    qdot_.resize(joint_names_.size());
    q_zero_.resize(joint_names_.size());
-   tau_cmd_.resize(joint_names_.size());
-            
+   tau_cmd_.resize(joint_names_.size());            
 
    q_act_.setZero();
    qdot_.setZero();
    q_zero_.setZero();
    tau_cmd_.setZero();
 
-
    H.resize(joint_names_.size());
    pc.resize(joint_names_.size());
-   tau.resize(joint_names_.size());
+   tauc.resize(joint_names_.size());
    u_vec.resize(joint_names_.size());
-   
 
    H.setZero();
    pc.setZero();
-   tau.setZero();
+   tauc.setZero();
    u_vec.setZero();
    
+   tau.resize(joint_names_.size());
+   tau.setZero();
    return true;
 }
 
@@ -334,69 +333,20 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
   typedef Eigen::Quaternion<double> Quaterniond;
   typedef std::vector<double> state_type;
   typedef runge_kutta4<state_type> rk4;
-            //typedef runge_kutta4<state_type> rk4;
-            //VectorXd s0(6);
-            //state_type s0(6);
-            //state_type s(6);
-            //VectorXd H(6);
-            //VectorXd pc(6);
-            //VectorXd tau(6);
 
-            //H.resize(joint_names_.size());
-            //pc.resize(joint_names_.size());
-            //tau.resize(joint_names_.size());
-
-            //VectorXd q_zero;
-            //VectorXd q_act;
-            //VectorXd qdot;
-            //VectorXd tau_cmd;
-            //VectorXd u_vec;
-            //state_type u_vec;
-
-            // Iinitializa q_act_, q_zero_, tau_cmd_
-/*            q_act_.resize(joint_names_.size());
-            qdot_.resize(joint_names_.size());
-            q_zero_.resize(joint_names_.size());
-            tau_cmd_.resize(joint_names_.size());
-
-            q_act_.setZero();
-            qdot_.setZero();
-            q_zero_.setZero();
-            tau_cmd_.setZero();
-*/
-            //VectorXd H(7);   // energy tanks 
-            //int pc1,pc2,pc3,pc4,pc5,pc6,pc7;  // power calculated from before interating it with transmission ratio
-            //int tau1,tau2,tau3,tau4,tau5,tau6,tau7; // torque cal from controller without energy tank and transmission ratio
-/*            for (int i=0; i<6; ++i)
-            {
-               s0[i]=sqrt(3);
-               //s[i]=0.0;
-               H[i]=0.0;
-               pc[i]=0.0;
-               tau[i]=0.0;
-
-            }
-*/  
-            //s0[0] = 0.0;
-            //s0[1] = 1.0;
-
-            // Integration parameters
+  // Integration parameters
   double t0 = 0.0;
   double t1 = 10.0;
   double d_t = 1.0;
             
-            // may be required to initiate
-            //double static_friction = 0.0;
-            //double viscous_friction = 0.0;
-            //double velocity_tolerance = 0.0;
-
-            // initial values
-   int ko = 250;      //Stiffness constant
-   int kt = 250;      //Stiffness constant
-   int b = 3;      //Damping Coefficient
+   // initial values
+   int ko = 100;             //rotational stiffness constant
+   int kt = 1000;            //translational stiffness constant
+   int b = 50;               //Damping coefficient
    int epsilon = 0.001;      //Minimum energy in tank
-   int Emax = 0.6;      //Maximum allowed energy
-   int Pmax = 0.8;      //Maximum allowed power
+   int Emax = 1;             //Maximum allowed energy
+   int Pmax = 2;             //Maximum allowed power
+   
    MatrixXd I3(3,3);
    I3 << 1,0,0,0,1,0,0,0,1;
    MatrixXd I7(7,7);
@@ -408,32 +358,46 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
          0,0,0,0,0,1,0,
          0,0,0,0,0,0,1;
             
-
-
-            // initial equations
+   // initial equations
    MatrixXd Bi = b * I7;               // I7 is equivalent to eye(7) where eye refers to identity matrix and 6 refers to size of matrix
-   MatrixXd Kti = kt * I3;
-   MatrixXd Koi = ko * I3; 
-   MatrixXd Kci(3,3);
-   Kci << 0,0,0,0,0,0,0,0,0;
+   MatrixXd Ko = ko * I3;
+   MatrixXd Kt = kt * I3; 
+   MatrixXd Kc(3,3);
+   Kc << 0,0,0,0,0,0,0,0,0;
 
-            //MatrixXd Gti = 0.5*trace(Kti)*eye(3) - Kti;          // trace refers to tensor space operator
-            //MatrixXd Goi = 0.5*trace(Koi)*eye(3) - Koi;
-            //MatrixXd Gci = 0.5*trace(Kci)*eye(3) - Kci;
-   MatrixXd Gti = 0.5*Kti.trace()*I3 - Kti;          // trace refers to tensor space operator
-   MatrixXd Goi = 0.5*Koi.trace()*I3 - Koi;
-   MatrixXd Gci = 0.5*Kci.trace()*I3 - Kci;
+   MatrixXd Goi = 0.5*Ko.trace()*I3 - Ko;
+   MatrixXd Gti = 0.5*Kt.trace()*I3 - Kt;          // trace refers to tensor space operator
+   MatrixXd Gci = 0.5*Kc.trace()*I3 - Kc;
 
-
-   
    double gamma = sqrt(2*epsilon);                     // square root
 
-//   for (int i = 0; i < joint_names_.size(); ++i)
-//   {
-//     q_act_[i] = joint_handle.getPosition();
+   for (int i = 0; i < joint_names_.size(); ++i)
+   {
+     q_act_[i] = joint_handle.getPosition();
      //double actual_velocity = actuated_joint.joint_handle.getVelocity();
 //     qdot_[i] = joint_handle.getVelocity();
-//   } 
+   } 
+
+     std::string link_name = "arm_left_tool_link";  //arm_left_tool_link
+     unsigned int tip_id = rbdl_model_.GetBodyId(link_name.c_str());
+     
+
+    Eigen::MatrixXd R_t0(3,3);      // current config rotation matrix initialization
+     //R_t0.resize(3, joint_names_.size());
+    R_t0.setZero();
+    RigidBodyDynamics::CalcBodyWorldOrientation(rbdl_model_, q_act_, tip_id, R_t0, false);
+
+    MatrixXd R_0t = R_t0.transpose();
+
+    Eigen::VectorXd p_0t(3,1);      // current config position vector initialization
+    p_0t.setZero();
+    RigidBodyDynamics::CalcBodyToBaseCoordinates(rbdl_model_, q_act_, tip_id, p_0t, false);
+
+    Matrix4d H_0t = Matrix4d::Identity();
+    
+    H_0t.block(0,0,3,3) = R_0t;
+    H_0t.block(0,3,3,1) = p_0t;
+
 
             //  later on the following section needs to take in pose and should be given to the following code for calculating homegenous matrix
 
@@ -454,50 +418,45 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //Hot.block(0,0,3,3) = q2r_c;
             //Hot.block(0,3,3,1) = ee_current_trans_vec;
              
-    MatrixXd q2r_c = Quaterniond(0.513,-0.509,-0.508,0.468).toRotationMatrix();    //0.513,-0.509,-0.508,0.468
-    VectorXd ee_current_trans_vec(3,1);
-    ee_current_trans_vec << 0.223, 0.227, 0.500; // 0.223, 0.227, 0.500 current_pose.position.x,current_pose.position.y,current_pose.position.z;        //0.192, 0.229, 0.496;  
-    Matrix4d Hot = Matrix4d::Identity();
-    Hot.block(0,0,3,3) = q2r_c;
-    Hot.block(0,3,3,1) = ee_current_trans_vec;
+    //MatrixXd q2r_c = Quaterniond(0.513,-0.509,-0.508,0.468).toRotationMatrix();    //0.513,-0.509,-0.508,0.468
+    //VectorXd ee_current_trans_vec(3,1);
+    //ee_current_trans_vec << 0.223, 0.227, 0.500; // 0.223, 0.227, 0.500 current_pose.position.x,current_pose.position.y,current_pose.position.z;        //0.192, 0.229, 0.496;  
+    //Matrix4d Hot = Matrix4d::Identity();
+    //Hot.block(0,0,3,3) = q2r_c;
+    //Hot.block(0,3,3,1) = ee_current_trans_vec;
 
 
             //Hov = [0 0 -1 -0.6; 0 1 0 (0.3*sin(2*pi/T)*tt); 1 0 0 0.6; 0 0 0 1];     // desired end effector config
             //MatrixXd Hov(4,4);
             //Hov << 0,0,-1,-0.6,0,1,0,(0.3*sin(2*M_PI/T)*tt),1,0,0,0.6,0,0,0,1;
 
-    MatrixXd q2r_d = Quaterniond(0.525,-0.526,-0.529,0.410).toRotationMatrix();     // q2r_d refers to quatrernion to rotation for desired end effector pose
-    VectorXd ee_desired_trans_vec(3,1);
-    ee_desired_trans_vec << 0.229, 0.372, 0.499;   // 0.229, 0.372, 0.499  
-    Matrix4d Hov = Matrix4d::Identity();
-    Hov.block(0,0,3,3) = q2r_d;
-    Hov.block(0,3,3,1) = ee_desired_trans_vec;
+    MatrixXd R_0v = Quaterniond(0.525,-0.526,-0.529,0.410).toRotationMatrix();     // R_0v refers to quatrernion to rotation for desired end effector pose
+    VectorXd p_0v(3,1);
+    p_0v << 0.229, 0.372, 0.499;   // 0.229, 0.372, 0.499  
+    
+    Matrix4d H_v0 = Matrix4d::Identity();
+    
+    H_v0.block(0,0,3,3) = R_0v.transpose();
+    H_v0.block(0,3,3,1) = -(R_0v.transpose()*p_0v);
+    
+    //MatrixXd Hvo=[transpose(q2r_d) rp;0 0 0 1];
 
-    MatrixXd Hvo=[transpose(q2r_d) -transpose(q2r_d)*ee_desired_trans_vec;0 0 0 1];
-
-            // Pre step to compute rotation and position components using relative configurations of ee to compute wrench 
-            //Hvt = inv(Hov)*Hot;
-    MatrixXd Hvt = Hvo*Hot;             
+    // Pre step to compute rotation and position components using relative configurations of ee to compute wrench 
+   
+    MatrixXd H_vt = H_v0*H_0t;             
     
 
-            // extracting rotaional Rvt and translational pvt part from Hvt for further calculating wrench 
-            //Rvt = Hvt((1:3),(1:3));        // this will extract first three rows and first three columns from Hvt
-    MatrixXd Rvt = Hvt.block(0,0,3,3);
+    // extracting rotaional Rvt and translational pvt part from Hvt for further calculating wrench 
+    MatrixXd R_vt = H_vt.block(0,0,3,3);
 
-            //pvt = Hvt((1:3),4);            // this will extract first three row entries of 4th column from Hvt
-    MatrixXd pvt = Hvt.block(0,3,3,1);
+    MatrixXd p_vt = H_vt.block(0,3,3,1);
 
-            //Rtv = inv(Rvt);
-    MatrixXd Rtv = Rvt.inverse(); 
+    MatrixXd R_tv = R_vt.transpose(); 
 
-            //skewness of pvt
-    //accumulator_set<double, stats<tag::skewness > > pvt_sk;
-    //pvt_sk(pvt(0));
-    //pvt_sk(pvt(1));
-    //pvt_sk(pvt(2));
-
-    //double pvt_s = skewness(pvt_sk); 
-    double pvt_s = [0 -pvt(3,1) pvt(2,1);pvt(3,1) 0 -pvt(1,1);-pvt(2,1) pvt(1,1) 0];
+    // converting position vector to skew-symmetric matrix
+    //MatrixXd tilde_p_vt = [0 -p_vt(3,1) p_vt(2,1);p_vt(3,1) 0 -p_vt(1,1);-p_vt(2,1) p_vt(1,1) 0];
+    MatrixXd tilde_p_vt(3,3); 
+    tilde_p_vt << 0,-p_vt(2,0),p_vt(1,0),p_vt(2,0),0,-p_vt(0,0),-p_vt(1,0),p_vt(0,0),0;
 
             // mass matrix tiago arm
             /* M =    */           // in matlab used m = 1 and then M = m * eye(6);
@@ -517,8 +476,8 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             
             // Jacobian 
             /* Jacobian =    */           // in matlab used Jacobian = eye(6) here used the current ee position to calculate jacobian
-     std::string link_name = "arm_left_tool_link";  //arm_left_tool_link
-     unsigned int tip_id = rbdl_model_.GetBodyId(link_name.c_str());
+     //std::string link_name = "arm_left_tool_link";  //arm_left_tool_link
+     //unsigned int tip_id = rbdl_model_.GetBodyId(link_name.c_str());
      Eigen::MatrixXd jacobian;      // jacobian initialization
      jacobian.resize(6, joint_names_.size());
      jacobian.setZero();
@@ -531,38 +490,45 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //Voi = -(trace(Goi*Rvt));
             //Vci = trace(Gci*Rtv*skewness(pvt);
 
-     int Vti = ((-0.25*pvt_s*Gti*pvt_s).trace())-((0.25*pvt_s*Rvt*Gti*Rtv*pvt_s).trace());
-     int Voi = -((Goi*Rvt).trace());
-     int Vci = ((Gci*Rtv*pvt_s).trace());
+     int Vti = (-1/4*(tilde_p_vt*Gti*tilde_p_vt).trace())-(1/4*(tilde_p_vt*R_vt*Gti*R_tv*tilde_p_vt).trace());
+     int Voi = -((Goi*R_vt).trace());
+     int Vci = ((Gci*R_tv*tilde_p_vt).trace());
 
 
-     int Vi = Vti + Voi + Vci;         // initial potential energy
+     int V_pi = Vti + Voi + Vci;         // initial potential energy
 
-     int KE = qdot_.transpose() * Mass * qdot_;        // transpose of qdot x M x qdot
+     int T_k = 1/2*qdot_.transpose() * Mass * qdot_;        // transpose of qdot x M x qdot
 
-     int Etoti = KE + Vi;               // initial energy of the system
-     int k_c;
-     if (Etoti > Emax)  
-        k_c = (Emax - KE)/ Vi;
+     int E_tot = T_k + V_pi;               // initial energy of the system
+     
+     int lamba_;
+
+     if (E_tot > Emax)  
+        lamba_ = (Emax - T_k)/ V_pi;
      else
-        k_c = 1;
+        lamba_ = 1;
      return;
             // calculation of new co-stiffness matrices and corresponding potential energy
 
-     MatrixXd Gt = k_c * Gti;           // new co-stiffness matrices
-     MatrixXd Go = k_c * Goi;
-     MatrixXd Gc = k_c * Gci;
+     MatrixXd Go = lamba_ * Goi;           // new co-stiffness matrices
+     MatrixXd Gt = lamba_ * Gti;
+     MatrixXd Gc = lamba_ * Gci;
 
             //Vt = -0.25*trace(skewness(pvt)*Gt*skewness(pvt) -0.25*trace(skewness(pvt)*Rvt*Gt*Rtv*skewness(pvt);
             //Vo = -(trace(Go*Rvt));
             //Vc = trace(Gc*Rtv*skewness(pvt);
 
-     int Vt = ((-0.25*pvt_s*Gt*pvt_s).trace())-((0.25*pvt_s*Rvt*Gt*Rtv*pvt_s).trace());
-     int Vo = -((Go*Rvt).trace());
-     int Vc = ((Gc*Rtv*pvt_s).trace());
+     //int Vt = ((-0.25*pvt_s*Gt*pvt_s).trace())-((0.25*pvt_s*Rvt*Gt*Rtv*pvt_s).trace());
+     //int Vo = -((Go*Rvt).trace());
+     //int Vc = ((Gc*Rtv*pvt_s).trace());
+     
+     int Vt = (-1/4*(tilde_p_vt*Gt*tilde_p_vt).trace())-(1/4*(tilde_p_vt*R_vt*Gt*R_tv*tilde_p_vt).trace());
+     int Vo = -((Go*R_vt).trace());
+     int Vc = ((Gc*R_tv*tilde_p_vt).trace());
 
-     int V = Vt + Vo + Vc;         // potential energy
-     int Etot = KE + V;            // total energy of the system
+
+     int V_p = Vt + Vo + Vc;         // potential energy
+     E_tot = T_k + V_p;            // total energy of the system
                 
             // Wrench applied on manipulator end effector due to spring can now be calculated as follows
             // Wt = [mt ft]T
@@ -579,106 +545,89 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //tG = (-2*astGo) - (astGt) - (2*astGc);
             //t = [tG(3,2); tG(1,3); tG(2,1)];
 
-     MatrixXd mGo = Go * Rvt;                           // 3x3 torque components 
-     MatrixXd asmGo = (mGo - mGo.transpose())/2;        // Skew/Anti symmetric part of torque components 
-     MatrixXd mGt = Gt * Rtv * pvt_s * pvt_s * Rvt;     // 3x3 torque components 
-     MatrixXd asmGt = (mGt - mGt.transpose())/2;        // Skew/Anti symmetric part of torque components
-     MatrixXd mGc = Gc * pvt_s * Rvt;                   // 3x3 torque components 
-     MatrixXd asmGc = (mGc - mGc.transpose())/2;        // Skew/Anti symmetric part of torque components
-     MatrixXd mG = (-2*asmGo) - (asmGt) - (2*asmGc);    // 3x3 Torque (rotational part of wrench)
-     VectorXd m(3,1); 
-     m << mG(2,1), mG(0,2), mG(1,0);          //   tG(3,2), tG(1,3), tG(2,1);    3x1 Torque (rotational part of wrench)
+     // Rotational part of wrench
+     MatrixXd tilde_m_t = - 2* 1/2*(Go*R_vt-(Go*R_vt).transpose())-1/2*(Gt*R_tv*tilde_p_vt*tilde_p_vt*R_vt-    (Gt*R_tv*tilde_p_vt*tilde_p_vt*R_vt).transpose())-2*1/2*(Gc*tilde_p_vt*R_vt-(Gc*tilde_p_vt*R_vt).transpose());
+     VectorXd m_t(3,1); 
+     //m_t = [tilde_m_t(3,2); tilde_m_t(1,3); tilde_m_t(2,1)];   in matlab
+     m_t << tilde_m_t(2,1),tilde_m_t(0,2),tilde_m_t(1,0);
 
-            // Translational part of wrench
-            //fGt = Gt * skewness(ptd);
-            //asfGt = (fGt - transpose(fGt))./2;
-            //fGt2 = Gt * Rdt * skewness(ptd) * Rtd;
-            //asfGt2 = (fGt2 - transpose(fGt2))./2;
-            //fGc = Gc * Rtd;
-            //asfGc = (fGc - transpose(Gc))./2;
-            //fG = (-Rdt * asfGt * Rtd) - (asfGt2) - (2 * asfGc);
-            //f = [fG(3,2); fG(1,3); fG(2,1)];
-
-     MatrixXd fGt = Gt * pvt_s;                                       // 3x3 force components
-     MatrixXd asfGt = (fGt - fGt.transpose())/2;                      // Skew/Anti symmetric part of force components 
-     MatrixXd fGt2 = Gt * Rtv * pvt_s * Rvt;                          // 3x3 force components
-     MatrixXd asfGt2 = (fGt2 - fGt2.transpose())/2;                   // Skew/Anti symmetric part of force components
-     MatrixXd fGc = Gc * Rvt;                                         // 3x3 force components  
-     MatrixXd asfGc = (fGc - Gc.transpose())/2;                       // Skew/Anti symmetric part of force components
-     MatrixXd fG = (-Rtv * asfGt * Rvt) - (asfGt2) - (2 * asfGc);     // 3x3 Torque (Translational part of wrench) 
-     VectorXd f(3,1); 
-     f << fG(2,1), fG(0,2), fG(1,0);                        //  fG(3,2), fG(1,3), fG(2,1);    3x1 Torque (Translational part of wrench)
-
+     // Translational part of wrench
+     MatrixXd tilde_f_t = -R_tv * 1/2*(Gt*tilde_p_vt- (Gt*tilde_p_vt).transpose())*R_vt-1/2*(Gt*R_tv*tilde_p_vt*R_vt-(Gt*R_tv*tilde_p_vt*R_vt).transpose())-2*1/2*(Gc*R_vt-(Gc*R_vt).transpose());
+     VectorXd f_t(3,1);
+     //f_t = [tilde_f_t(3,2); tilde_f_t(1,3); tilde_f_t(2,1)];   in matlab
+     f_t << tilde_f_t(2,1),tilde_f_t(0,2),tilde_f_t(1,0);
             
-     VectorXd Wsn0(6,1);           // wrench vector initialization
-     Wsn0 << 0,0,0,0,0,0; 
+     VectorXd Wt(6,1);           // wrench vector initialization
+     Wt << 0,0,0,0,0,0; 
     
-     Wsn0.block(0,0,3,1) = m;          // Wsn0(1:3,1) = t ... t represented with small m here;
-     Wsn0.block(3,0,3,1) = f;          // Wsn0(4:6,1) = f; 
-            
-            //MatrixXd Htip0(6,6);
-            //Htip0 << 0,0,-1,0,0,-0.6,
-            //         0,1,0,0,0,0,
-            //       1,0,0,0,0,0.6,
-            //      0.6,0,0,0,0,-1,
-            //       0,0,0,0,1,0;
-            //     -0.6,0,0,1,0,0;
-     MatrixXd q2r = Quaterniond(0.048,0.998,-0.024,0.015).toRotationMatrix();
-     VectorXd ee_runtime_trans_vec(3,1);
-     ee_runtime_trans_vec << 0.192, 0.229, 0.496;  
-     Matrix4d tee_current = Matrix4d::Identity();
-     tee_current.block(0,0,3,3) = q2r;
-     tee_current.block(0,3,3,1) = ee_runtime_trans_vec;
-            //std::cout << "\nCurrent Pose EE = \n" << tee_current << std::endl;
+     Wt.block(0,0,3,1) = m_t;          // Wsn0(1:3,1) = t ... t represented with small m here;
+     Wt.block(3,0,3,1) = f_t;          // Wsn0(4:6,1) = f; 
+
+     MatrixXd tilde_p_0t(3,3);
+     tilde_p_0t << 0,-p_0t(2,0),p_0t(1,0),p_0t(2,0),0,-p_0t(0,0),-p_0t(1,0),p_0t(0,0),0;
+
+     MatrixXd AdjT_H_t0(6,6);
+     AdjT_H_t0.fill(0);
+
+     AdjT_H_t0.block(0,0,3,3) = R_0t;
+     AdjT_H_t0.block(0,3,3,3) = tilde_p_0t*R_0t;
+     AdjT_H_t0.block(3,3,3,3) = R_0t;
+
+     VectorXd W0(6,1);           // wrench vector transformation of 
+     W0 = AdjT_H_t0* Wt;     
 
 
+     //Matrix6d AdjT_H_t0 = Matrix6d::Identity();
+     //AdjT_H_t0 = [R_0t tilde_p_0t*R_0t; zeros(3) R_0t]; 
+//R_0t =     
+ 
 
-     MatrixXd Htipbase(6,6);
-     Htipbase.fill(0);
-     Htipbase.block(0,0,3,3) = q2r;
-     Htipbase.block(3,3,3,3) = q2r;
-     VectorXd j(3,1);
-     j = ee_current_trans_vec;
-     MatrixXd sk_mat(3,3); 
-     sk_mat << 0,-(j(2)),j(1),j(2),0.0,-j(0),-j(1),j(0),0.0;
-     Htipbase.block(3,0,3,3) = sk_mat*(q2r); 
+     //MatrixXd Htipbase(6,6);
+     //Htipbase.fill(0);
+     //Htipbase.block(0,0,3,3) = q2r;
+     //Htipbase.block(3,3,3,3) = q2r;
+     //VectorXd j(3,1);
+     //j = ee_current_trans_vec;
+     //MatrixXd sk_mat(3,3); 
+     //sk_mat << 0,-(j(2)),j(1),j(2),0.0,-j(0),-j(1),j(0),0.0;
+     //Htipbase.block(3,0,3,3) = sk_mat*(q2r); 
            
-     VectorXd W0 = (((Htipbase.inverse()).adjoint()).transpose()) * (Wsn0);      // wrench acting on end effector expressed in inertial frame
+     //VectorXd W0 = (((Htipbase.inverse()).adjoint()).transpose()) * (Wsn0);      // wrench acting on end effector expressed in inertial frame
 
-           // Power of the System 
-     VectorXd Fs = jacobian.transpose() * W0;        // Force due to spatial compliance
-     VectorXd Fdi = Bi * qdot_;                      // Force due to joint damping
-
-     VectorXd Fci = Fs - Fdi;                       // Initial controller force
-
-     int Pci = Fci.transpose() * qdot_;          // Initial power of the controller
            
+     // Power of the System 
+     
+     int pc = ((jacobian.transpose() * W0 - Bi * qdot_).transpose()) * qdot_ ;  // Initial power of the controller
+     
      int beta;
-     if (Pci > Pmax) 
-         beta = ((Fs.transpose()*qdot_) - Pmax)/ (Fdi.transpose()*qdot_);
+     if (pc > Pmax) 
+          int beta = (((((jacobian.transpose()) * W0).transpose())*qdot_) - Pmax)/ ((qdot_.transpose())*Bi*qdot_);
      else
-         beta = 1;
+          int beta = 1; 
      return;
 
-           // New joint damping matrix using scaling parameter beta
+     // New joint damping matrix using scaling parameter beta
      MatrixXd B = beta * Bi;
 
-           // New power of the controller using new joint damping matrix
-     VectorXd Fd = B * qdot_;                   // Force due to joint damping
-     VectorXd F_c = Fs - Fd;                    // Controller force
+     // New power of the controller using new joint damping matrix
+     tau_cmd_ = ((jacobian.transpose()) * W0) - B * qdot_;                    // Controller force
 
-     VectorXd P_c = F_c.transpose() * qdot_;       // Power of the controller
+     pc = (tau_cmd_.transpose()) * qdot_ ;      // Power of the controller
 
 
-           // Controller torques for each joint
-     tau[0] = F_c[0];
-     tau[1] = F_c[1];
-     tau[2] = F_c[2];
-     tau[3] = F_c[3];
-     tau[4] = F_c[4];
-     tau[5] = F_c[5];
-     tau[6] = F_c[6];
-          
+     std::vector<double> s0;
+     //std::vector<double> s_i;
+     //s_i.resize(1, joint_names_.size());
+     //s_i << 12,12,12,0,0,0,0;  
+     //s0.resize(1, joint_names_.size());
+     s0[0] = sqrt(2*12);
+     s0[1] = sqrt(2*12);
+     s0[2] = sqrt(2*12);
+     s0[3] = sqrt(2*0);
+     s0[4] = sqrt(2*0);
+     s0[5] = sqrt(2*0);
+     s0[6] = sqrt(2*0);
+
            // Run integrator with rk4 stepper
            //std::cout << "==========  rk4 - basic stepper  ====================" << std::endl;
            //auto r = make_pair( a.begin() , a.begin() + 3 );
@@ -695,98 +644,118 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
            // stepper_type() , my_system , s , t0 , t1 , dt , null_observer() );
            //}
 
+     int s1 = s0[0];
+     int s2 = s0[1];     
+     int s3 = s0[2];
+     int s4 = s0[3];
+     int s5 = s0[4];
+     int s6 = s0[5];
+     int s7 = s0[6];
 
+     // Controller torques for each joint
+     tauc[0] = tau_cmd_[0];
+     tauc[1] = tau_cmd_[1];
+     tauc[2] = tau_cmd_[2];
+     tauc[3] = tau_cmd_[3];
+     tauc[4] = tau_cmd_[4];
+     tauc[5] = tau_cmd_[5];
+     tauc[6] = tau_cmd_[6];
+          
 
            //return detail::integrate_adaptive(stepper, system, start_state, start_time, end_time, dt)
            // Potential energy in each tank, an energy tank is modeled as a spring with const stiffness k = 1
            // connected to robot through a transmission unit 
            // so H = 0.5*k*s^2 ==> H = 0.5*s^2 
-     H[0] = 0.5*s0[0]*s0[0];
-     H[1] = 0.5*s0[1]*s0[1];
-     H[2] = 0.5*s0[2]*s0[2];
-     H[3] = 0.5*s0[3]*s0[3];
-     H[4] = 0.5*s0[4]*s0[4];
-     H[5] = 0.5*s0[5]*s0[5];
-     H[6] = 0.5*s0[6]*s0[6];           
+     H[0] = 0.5*s1*s1;
+     H[1] = 0.5*s2*s2;
+     H[2] = 0.5*s3*s3;
+     H[3] = 0.5*s4*s4;
+     H[4] = 0.5*s5*s5;
+     H[5] = 0.5*s6*s6;
+     H[6] = 0.5*s7*s7;           
 
      int Htot = H[0] + H[1] + H[2] + H[3] + H[4] + H[5] + H[6];     // Total energy in tanks
 
-           // Power of the controller on each joint
-     pc[0] = tau[0] * qdot_[0];
-     pc[1] = tau[1] * qdot_[1];
-     pc[2] = tau[2] * qdot_[2];
-     pc[3] = tau[3] * qdot_[3];
-     pc[4] = tau[4] * qdot_[4];
-     pc[5] = tau[5] * qdot_[5];
-     pc[6] = tau[6] * qdot_[6];
+     // Power of the controller on each joint
+     //pc[0] = tauc[0] * qdot_[0];
+     //pc[1] = tauc[1] * qdot_[1];
+     //pc[2] = tauc[2] * qdot_[2];
+     //pc[3] = tauc[3] * qdot_[3];
+     //pc[4] = tauc[4] * qdot_[4];
+     //pc[5] = tauc[5] * qdot_[5];
+     //pc[6] = tauc[6] * qdot_[6];
           
            
            // transmission unit allows power flow from controller to robot and it is regulated by ratio u
            // transmission variable
      if ((H[0] > epsilon))     // || (pc[0] < 0)
 
-          u_vec[0]=-tau[0]/s0[0];
+          u_vec[0]=-tauc[0]/s0[0];
      else
 
-          u_vec[0]=(-tau[0]/gamma*gamma)*s0[0];
+          u_vec[0]=(-tauc[0]/gamma*gamma)*s0[0];
      return;
 
      if ((H[1] > epsilon))    // || (pc[1] < 0)
 
-          u_vec[1]=-tau[1]/s0[1];
+          u_vec[1]=-tauc[1]/s0[1];
      else
 
-          u_vec[1]=((-tau[1])/gamma*gamma)*s0[1];
+          u_vec[1]=((-tauc[1])/gamma*gamma)*s0[1];
      return;
 
      if ((H[2] > epsilon))   // || (pc[2] < 0)
 
-              u_vec[2]=-tau[2]/s0[2];
+          u_vec[2]=-tauc[2]/s0[2];
      else
 
-              u_vec[2]=(-tau[2]/gamma*gamma)*s0[2];
+          u_vec[2]=(-tauc[2]/gamma*gamma)*s0[2];
      return;
 
      if ((H[3] > epsilon))   // || (pc[3] < 0)
 
-              u_vec[3]=-tau[3]/s0[3];
+          u_vec[3]=-tauc[3]/s0[3];
      else
 
-              u_vec[3]=(-tau[3]/gamma*gamma)*s0[3];
+          u_vec[3]=(-tauc[3]/gamma*gamma)*s0[3];
      return;
 
      if ((H[4] > epsilon))   // || (pc[4] < 0)
 
-              u_vec[4]=-tau[4]/s0[4];
+          u_vec[4]=-tauc[4]/s0[4];
      else
 
-              u_vec[4]=(-tau[4]/gamma*gamma)*s0[4]; 
+          u_vec[4]=(-tauc[4]/gamma*gamma)*s0[4]; 
      return;
 
      if ((H[5] > epsilon))  // || (pc[5] < 0)
 
-              u_vec[5]=-tau[5]/s0[5];
+          u_vec[5]=-tauc[5]/s0[5];
      else
 
-              u_vec[5]=(-tau[5]/gamma*gamma)*s0[5];
+          u_vec[5]=(-tauc[5]/gamma*gamma)*s0[5];
      return;
 
      if ((H[6] > epsilon))  // || (pc[6] < 0)
 
-              u_vec[6]=-tau[6]/s0[6];
+          u_vec[6]=-tauc[6]/s0[6];
      else
 
-              u_vec[6]=(-tau[6]/gamma*gamma)*s0[6];
+          u_vec[6]=(-tauc[6]/gamma*gamma)*s0[6];
      return;
+
+     //VectorXd W0(6,1);
+     u_vec << u_vec[0],u_vec[1],u_vec[2],u_vec[3],u_vec[4],u_vec[5],u_vec[6];
+     H << H[0],H[1],u_vec[2],u_vec[3],u_vec[4],u_vec[5],u_vec[6]; 
 
            //u=[u1;u2;u3;u4;u5;u6];
 
 
-           // For all the joints...
+     // For all the joints...
      for (size_t i = 0; i < joint_names_.size(); ++i)
      {
-         tau_cmd_[i] = - u_vec[i] * s0[i];
-         double output_torque = tau_cmd_[i];
+         tau[i] = - u_vec[i] * s0[i];
+         double output_torque = tau[i];
 
                //output_torque += joint_names_[i].viscous_friction * qdot;
                //if (qdot > joints.friction_parameters.velocity_tolerance)
