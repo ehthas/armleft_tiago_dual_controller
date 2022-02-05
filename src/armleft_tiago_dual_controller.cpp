@@ -147,6 +147,22 @@ bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInte
          joint_damping, joint_friction, joint_max_effort);
     }
 
+  for (size_t i = 0; i < joint_names_.size(); i++)
+  {
+      
+      try
+      {  
+      // Try to get an effort interface handle to command the joint in effort
+        hardware_interface::JointHandle joint_handle =
+            effort_iface->getHandle(joint_names_[i]);
+      }
+      catch (...)
+      {
+        ROS_ERROR_STREAM("Could not find joint " << joint_names_[i] << " with Effort interface");
+        return false;
+      }
+  }
+
 /*    for (size_t i = 0; i < joint_names_.size(); i++)
     {
                // Checks joint type from param server
