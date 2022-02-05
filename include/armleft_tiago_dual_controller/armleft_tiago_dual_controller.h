@@ -54,7 +54,7 @@ namespace armleft_tiago_dual_controller
 */
 //struct ActuatedJoint
 //{
-//  hardware_interface::JointHandle joint_handle;
+  hardware_interface::JointHandle joint_handle;
 //  ActuatorParameters actuator_parameters;
 //  GravityCompensationParameters friction_parameters;
 //};
@@ -125,7 +125,7 @@ private:
   Eigen::VectorXd tau;
 
   std::vector<std::string> joint_names_;                  /*!< Vector with the joint names of all the joints, including the actuated and the static ones */
-  std::vector<std::string> joints_;
+  //std::vector<std::string> joints_;
 
 //  std::map<std::string, JointType> joint_types_;          /*!< Map to define which joint are actuated and which one are static */
 //  std::map<std::string, ActuatedJoint> actuated_joints_;  /*!< Map with the actuated joints and his parameters + hardware interface to read and write commands*/
@@ -140,7 +140,7 @@ private:
   //typedef std::vector<double> state_type;
   //typedef runge_kutta4<state_type> rk4;
 
-  hardware_interface::JointHandle joint_handle;
+  //hardware_interface::JointHandle joint_handle;
 
   ddynamic_reconfigure::DDynamicReconfigurePtr ddr_;     /*!< Dyanic reconfigure */
 };
