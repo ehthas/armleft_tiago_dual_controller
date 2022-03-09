@@ -8,7 +8,7 @@ static_friction: 0.0
 
 joints:
   torso_lift_joint:
-    type: actuated
+    type: static
   arm_left_1_joint:
     type: actuated
     motor_torque_constant: 1.0
