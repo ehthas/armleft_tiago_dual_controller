@@ -333,13 +333,18 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
   for (size_t i = 0; i < joint_names_.size(); ++i)
   {
     if (joint_types_[joint_names_[i]] == JointType::ACTUATED)
-      //q_act_[i] = actuated_joints_[joint_names_[i]].joint_handle.getPosition();
-      qdot_[i] = actuated_joints_[joint_names_[i]].joint_handle.getVelocity();
-      //qdot_[i] = actuated_joints_.joint_handle.getVelocity();
+      q_act_[i] = actuated_joints_[joint_names_[i]].joint_handle.getPosition();
     else
-      ROS_ERROR_STREAM("is not a valid Actuated Joint "
-                         << joint_names_[i] );
+      q_act_[i] = static_joints_[joint_names_[i]].getPosition();
   }   
+	
+  for (size_t i = 0; i < joint_names_.size(); ++i)
+  {
+    if (joint_types_[joint_names_[i]] == JointType::ACTUATED)
+      qdot_[i] = actuated_joints_[joint_names_[i]].joint_handle.getVelocity();
+    else
+      ROS_ERROR_STREAM("is not a valid Actuated Joint " << joint_names_[i] );
+  }   	
 
    tau.setZero();
    RigidBodyDynamics::InverseDynamics(rbdl_model_, q_act_, q_zero_, q_zero_, tau);
