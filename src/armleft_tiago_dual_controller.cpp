@@ -48,7 +48,7 @@ bool MyEnergyShapingPositionController::initRequest(hardware_interface::RobotHW*
        return false;
     }
 
-    // Get a pointer to the joint position and not effort control interface
+    // Get a pointer to the joint effort control interface
     hardware_interface::EffortJointInterface* effort_iface =
        robot_hw->get<hardware_interface::EffortJointInterface>();
 
@@ -59,22 +59,23 @@ bool MyEnergyShapingPositionController::initRequest(hardware_interface::RobotHW*
       return false;
     }
 
-            // Get a pointer to the joint position control interface
-            //hardware_interface::JointStateInterface* joint_state_iface =
-            //    robot_hw->get<hardware_interface::JointStateInterface>();
-            //if (!joint_state_iface)
-            //{
-            //   ROS_ERROR("This controller requires a hardware interface of type JointStateInterface."
-            //            " Make sure this is registered in the hardware_interface::RobotHW class.");
-            //   return false;
-            //}
+    //Get a pointer to the joint position control interface
+    hardware_interface::JointStateInterface* joint_state_iface =
+                robot_hw->get<hardware_interface::JointStateInterface>();
+    
+    if (!joint_state_iface)
+    {
+        ROS_ERROR("This controller requires a hardware interface of type JointStateInterface."
+                 " Make sure this is registered in the hardware_interface::RobotHW class.");
+        return false;
+    }
 
-            // Clear resources associated at both interfaces
+   // Clear resources associated at both interfaces
    effort_iface->clearClaims();
-            //joint_state_iface->clearClaims();
+   joint_state_iface->clearClaims();
 
 
-   if (!init(effort_iface, root_nh, controller_nh))  //  joint_state_iface, root_nh,
+   if (!init(effort_iface, joint_state_iface, root_nh, controller_nh))  //  joint_state_iface, root_nh,
    {
       ROS_ERROR("Failed to initialize the controller");
       return false;
@@ -89,12 +90,12 @@ bool MyEnergyShapingPositionController::initRequest(hardware_interface::RobotHW*
     // Changes state to INITIALIZED
     state_ = INITIALIZED;
             
-    std::cout << "Controller exiting Init Request Function";
+    //std::cout << "Controller exiting Init Request Function";
     //ROS_INFO_STREAM("Controller exiting Init Request Function");
     return true;
 }
    
-bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInterface* effort_iface, ros::NodeHandle& /*root_nh,*/, ros::NodeHandle& control_nh)
+bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInterface* effort_iface, hardware_interface::JointStateInterface* joint_state_iface, ros::NodeHandle& root_nh, ros::NodeHandle& control_nh)
                  /*hardware_interface::JointStateInterface* joint_state_iface,
                  ros::NodeHandle& root_nh,*/ 
 {
@@ -103,7 +104,7 @@ bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInte
    //std::vector<std::string> joints_;
             //typedef Eigen::Quaternion<double> Quaterniond;
 
-
+   //hardware_interface::JointHandle joint_handle;
    //joints_.resize(joint_names_.size());
    //joints_.setZero();
 
@@ -146,10 +147,14 @@ bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInte
          joint_position_min, joint_position_max, joint_vel_min, joint_vel_max,
          joint_damping, joint_friction, joint_max_effort);
     }
+   
 
-  for (size_t i = 0; i < joint_names_.size(); i++)
-  {
-      
+
+  //for (size_t i = 0; i < joint_names_.size(); i++)
+  //{
+
+
+/* following code tries to look for effort joint interface for torso joint which doe not exist       
       try
       {  
       // Try to get an effort interface handle to command the joint in effort
@@ -163,162 +168,97 @@ bool MyEnergyShapingPositionController::init(hardware_interface::EffortJointInte
       }
   }
 
-/*    for (size_t i = 0; i < joint_names_.size(); i++)
+  thus not to be used ...
+*/  
+
+for (size_t i = 0; i < joint_names_.size(); i++)
+  {
+    // Checks joint type from param server
+    std::string control_type;
+    if (!control_nh.getParam("joints/" + joint_names_[i] + "/type", control_type))
     {
-               // Checks joint type from param server
-               //std::string control_type;
-      if (!control_nh.getParam("joints", joints_[i]))
+      ROS_ERROR_STREAM("Could not find joint " << joint_names_[i] << " interface type");
+      return false;
+    }
+
+    if (control_type == "actuated" ||
+        control_type == "no_control")  // If joint is actuated or constantly commanded to zero
+    {
+      // Read the actuator parameters from param server
+      ActuatorParameters actuator_parameters;
+      if (!control_nh.getParam("joints/" + joint_names_[i] + "/motor_torque_constant",
+                               actuator_parameters.motor_torque_constant))
       {
-         ROS_ERROR_STREAM("Could not find joint " << joints_[i]);
-         return false;
+        ROS_ERROR_STREAM("Could not find motor torque constant for joint " << joint_names_[i]);
+        return false;
       }
-               
-//               joints_ = robot_hw->getHandle(joint_names_[i]);
-//            } 
-               // Read the actuator parameters from param server
-               //ActuatorParameters actuator_parameters;
-               //if (!control_nh.getParam("joints/" + joint_names_[i] + "/motor_torque_constant", motor_torque_constant))
-               //{
-               //   ROS_ERROR_STREAM("Could not find motor torque constant for joint " << joint_names_[i]);
-               //return false;
-               //}
-               //if (!control_nh.getParam("joints/" + joint_names_[i] + "/reduction_ratio", reduction_ratio))
-               //{
-               //   ROS_ERROR_STREAM("Could not find reduction ratio for joint " << joint_names_[i]);
-               //return false;
-               //}
+      if (!control_nh.getParam("joints/" + joint_names_[i] + "/reduction_ratio",
+                               actuator_parameters.reduction_ratio))
+      {
+        ROS_ERROR_STREAM("Could not find reduction ratio for joint " << joint_names_[i]);
+        return false;
+      }
 
-               // Reads the optional gravity compensation parameters
-               //GravityCompensationParameters friction_parameters;
-               //if (!control_nh.getParam("viscous_friction", viscous_friction))
-               //{ 
-               //   ROS_WARN_STREAM("No viscous friction defined for joint "
-               //         << joint_names_[i] << ". Setting it to 0.0");
-               //}
-               //if (!control_nh.getParam("velocity_tolerance", velocity_tolerance))
-               //{
-               //ROS_WARN_STREAM("No velocity tolerance defined for joint "
-               //         << joint_names_[i] << ". Setting it to 0.0");
-               //}
-               //if (!control_nh.getParam("static_friction", static_friction))
-               //{
-               //ROS_WARN_STREAM("No static friction defined for joint " << joint_names_[i]
-               //                                                 << ". Setting it to 0.0");
-               //}
-        try
-        {
-                  // Try to get an effort interface handle to command the joint in effort
-           hardware_interface::JointHandle joint_handle=
-             position_iface->getHandle(joints_[i]);
-                      //joint_handle = joint_handle;
-                   
-        }
-        catch (...)
-        {
-           ROS_ERROR_STREAM("Could not find joint " << joints_[i] << " with Effort interface");
-           return false;
-        }
-               //else 
-               //{
-               //try
-               //{
-                  // Try to get a joint state handle which only allows us to read the current states
-                  // of the joint
-               //   hardware_interface::JointStateHandle joint_state_handle =
-               //       joint_state_iface->getHandle(joint_names_[i]);
-                      //joint_state_handle = joint_state_handle;
-                  // Insert this handle in the map of static joints
-                  //static_joints_.insert(std::make_pair(joint_names_[i], joint_state_handle));
-               //}
-               //catch (...)
-               //{
-               //   ROS_ERROR_STREAM("Could not find joint " << joint_names_[i] << " with Position interface");
-               //   return false;
-               //}
-               ///}
-    }  
-*/
-            //assert(joint_types_.size() == joint_names_.size());
+      // Reads the optional gravity compensation parameters
+      GravityCompensationParameters friction_parameters;
+      if (!control_nh.getParam("viscous_friction", friction_parameters.viscous_friction))
+        ROS_WARN_STREAM("No viscous friction defined for joint "
+                        << joint_names_[i] << ". Setting it to 0.0");
+      if (!control_nh.getParam("velocity_tolerance", friction_parameters.velocity_tolerance))
+        ROS_WARN_STREAM("No velocity tolerance defined for joint "
+                        << joint_names_[i] << ". Setting it to 0.0");
+      if (!control_nh.getParam("static_friction", friction_parameters.static_friction))
+        ROS_WARN_STREAM("No static friction defined for joint " << joint_names_[i]
+                                                                << ". Setting it to 0.0");
+
+      try
+      {
+        // Try to get an effort interface handle to command the joint in effort
+        hardware_interface::JointHandle joint_handle =
+            effort_iface->getHandle(joint_names_[i]);
+        // Creates an actuated joint and insert in the map of actuated joints
+        ActuatedJoint actuated_joint;
+        actuated_joint.joint_handle = joint_handle;
+        actuated_joint.actuator_parameters = actuator_parameters;
+        actuated_joint.friction_parameters = friction_parameters;
+        actuated_joints_.insert(std::make_pair(joint_names_[i], actuated_joint));
+      }
+      catch (...)
+      {
+        ROS_ERROR_STREAM("Could not find joint " << joint_names_[i] << " with Effort interface");
+        return false;
+      }
+      // Insert the joint in the map of joint types according to his type
+      if (control_type == "actuated")
+        joint_types_.insert(std::make_pair(joint_names_[i], JointType::ACTUATED));
+      else if (control_type == "no_control")
+        joint_types_.insert(std::make_pair(joint_names_[i], JointType::ACTUATED_NO_CONTROL));
+    }
+    else  // If static joint
+    {
+      try
+      {
+        // Try to get a joint state handle which only allows us to read the current states
+        // of the joint
+        hardware_interface::JointStateHandle joint_state_handle =
+            joint_state_iface->getHandle(joint_names_[i]);
+        // Insert this handle in the map of static joints
+        static_joints_.insert(std::make_pair(joint_names_[i], joint_state_handle));
+      }
+      catch (...)
+      {
+        ROS_ERROR_STREAM("Could not find joint " << joint_names_[i] << " with Position interface");
+        return false;
+      }
+      // Insert the joint in the map of joint types
+      joint_types_.insert(std::make_pair(joint_names_[i], JointType::STATIC));
+    }
+  }
+
+  assert(joint_types_.size() == joint_names_.size());
+  assert(joint_types_.size() == actuated_joints_.size() + static_joints_.size());
 
 
-            //std::string link_name = "arm_left_tool_link";
-            //unsigned int tip_id = model_.rbdl_model_.GetBodyId(link_name);
-            //Eigen::MatrixXd jacobian;      // jacobian initialization
-            //jacobian.resize(6, model_.joint_names_.size());
-            //jacobian.setZero();
-
-            //Eigen::MatrixXd M;             // Mass Matrix initialization
-            //M.resize(7, model_.joint_names_.size());
-            //M.setZero();
-            //Eigen::MatrixXd Mass;    //inertia matrix
-            //Mass.resize(model_.joint_names_.size(), model_.joint_names_.size());
-            //Mass.setZero();
-            
-
-            //state_type s0(7);  // Initial condition vector of 7 elements 
-
-
-            //int tt = 15;                                    // apply force(F) of -10 N at this time for one second 
-            //int T = 4;
-
-            
-            //std::vector<std::string> joints;
-            //if (!n.getParam("joints", joints)) 
-            //{
-            //   ROS_ERROR("Could not read joint names from param server");
-            //   return false;
-            //}
-
-            //if (joints.size() != 7)
-            //{
-            //   ROS_ERROR_STREAM("JointPositionController: Wrong number of joint names, got " << joints.size() << " instead of 7 names!");
-            //   return false;
-            //}
-/*            for (int i = 0; i < joint_names_.size(); i++)
-            {
-
-                joint_handle_.resize(joint_names_.size());
-            //for (size_t i=0; i<7; ++i)
-            //{
-                joint_handle_[i] = hw->getHandle(joints[i]); 
-            //    command_[i] = joint_handles_[i].getPosition(); 
-            
-            //}
-            }
-*/
-            // retrieve gains
-            
-            //if (!n.getParam("gains", gains_)) 
-            //{
-            //   ROS_ERROR("Could not read joint gains from param server");
-            //   return false;
-            //}    
-
-            //std::array<double, 7> q_start{{0, 0, 0, 0, 0, 0, 0}};
-            //for (size_t i=0 i < q_start.size() i++)
-            //{
-            //    if (std::abs(joint_handles_[i].getPosition() - q_start[i]) > 0.1)
-            //       {
-            //        ROS_ERROR_STREAM( "Robot is not in expected start state" )
-            //       return false;
-            //       }  
-
-            //}
-
-
-            //for (&joint : joints) 
-            //{
-            //   joint_handles_.push_back(hw->getHandle(joint));
-            //}
-
-            //for (&joint_handle : joint_handles_) 
-            //{
-            //   command_.push_back(joint_handle.getPosition());
-            //}
-
-            
-
-            //sub_command_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &MyEnergyShapingPositionController::setCommandCallback, this);
    q_act_.resize(joint_names_.size());
    qdot_.resize(joint_names_.size());
    q_zero_.resize(joint_names_.size());
@@ -387,32 +327,43 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
 
    double gamma = sqrt(2*epsilon);                     // square root
 
-   for (int i = 0; i < joint_names_.size(); ++i)
-   {
-     q_act_[i] = joint_handle.getPosition();
-     //double actual_velocity = actuated_joint.joint_handle.getVelocity();
-//     qdot_[i] = joint_handle.getVelocity();
-   } 
+   //q_act_ << -1.099999566134275, 1.4661131823414433, 2.714097591336534, 1.7072196689378751, -1.570925439803121, 1.3893800535153238, 4.166054137666464e-05;
+  
+  //  read current position of all the joints
+  for (size_t i = 0; i < joint_names_.size(); ++i)
+  {
+    if (joint_types_[joint_names_[i]] == JointType::ACTUATED)
+      //q_act_[i] = actuated_joints_[joint_names_[i]].joint_handle.getPosition();
+      qdot_[i] = actuated_joints_[joint_names_[i]].joint_handle.getVelocity();
+      //qdot_[i] = actuated_joints_.joint_handle.getVelocity();
+    else
+      ROS_ERROR_STREAM("is not a valid Actuated Joint "
+                         << joint_names_[i] );
+  }   
 
-     std::string link_name = "arm_left_tool_link";  //arm_left_tool_link
-     unsigned int tip_id = rbdl_model_.GetBodyId(link_name.c_str());
+   tau.setZero();
+   RigidBodyDynamics::InverseDynamics(rbdl_model_, q_act_, q_zero_, q_zero_, tau);
+
+
+   std::string link_name = "arm_left_tool_link";  //arm_left_tool_link
+   unsigned int tip_id = rbdl_model_.GetBodyId(link_name.c_str());
      
 
-    Eigen::MatrixXd R_t0(3,3);      // current config rotation matrix initialization
+   Eigen::MatrixXd R_t0(3,3);      // current config rotation matrix initialization
      //R_t0.resize(3, joint_names_.size());
-    R_t0.setZero();
-    RigidBodyDynamics::CalcBodyWorldOrientation(rbdl_model_, q_act_, tip_id, R_t0, false);
+   R_t0.setZero();
+   RigidBodyDynamics::CalcBodyWorldOrientation(rbdl_model_, q_act_, tip_id, R_t0, false);
 
-    MatrixXd R_0t = R_t0.transpose();
+   MatrixXd R_0t = R_t0.transpose();
 
-    Eigen::VectorXd p_0t(3,1);      // current config position vector initialization
-    p_0t.setZero();
-    RigidBodyDynamics::CalcBodyToBaseCoordinates(rbdl_model_, q_act_, tip_id, p_0t, false);
+   Eigen::VectorXd p_0t(3,1);      // current config position vector initialization
+   p_0t.setZero();
+   RigidBodyDynamics::CalcBodyToBaseCoordinates(rbdl_model_, q_act_, tip_id, p_0t, false);
 
-    Matrix4d H_0t = Matrix4d::Identity();
+   Matrix4d H_0t = Matrix4d::Identity();
     
-    H_0t.block(0,0,3,3) = R_0t;
-    H_0t.block(0,3,3,1) = p_0t;
+   H_0t.block(0,0,3,3) = R_0t;
+   H_0t.block(0,3,3,1) = p_0t;
 
 
             //  later on the following section needs to take in pose and should be given to the following code for calculating homegenous matrix
@@ -446,33 +397,33 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //MatrixXd Hov(4,4);
             //Hov << 0,0,-1,-0.6,0,1,0,(0.3*sin(2*M_PI/T)*tt),1,0,0,0.6,0,0,0,1;
 
-    MatrixXd R_0v = Quaterniond(0.525,-0.526,-0.529,0.410).toRotationMatrix();     // R_0v refers to quatrernion to rotation for desired end effector pose
-    VectorXd p_0v(3,1);
-    p_0v << 0.229, 0.372, 0.499;   // 0.229, 0.372, 0.499  
+   MatrixXd R_0v = Quaterniond(0.525,-0.526,-0.529,0.410).toRotationMatrix();     // R_0v refers to quatrernion to rotation for desired end effector pose
+   VectorXd p_0v(3,1);
+   p_0v << 0.229, 0.372, 0.499;   // 0.229, 0.372, 0.499  
     
-    Matrix4d H_v0 = Matrix4d::Identity();
+   Matrix4d H_v0 = Matrix4d::Identity();
     
-    H_v0.block(0,0,3,3) = R_0v.transpose();
-    H_v0.block(0,3,3,1) = -(R_0v.transpose()*p_0v);
+   H_v0.block(0,0,3,3) = R_0v.transpose();
+   H_v0.block(0,3,3,1) = -(R_0v.transpose()*p_0v);
     
     //MatrixXd Hvo=[transpose(q2r_d) rp;0 0 0 1];
 
     // Pre step to compute rotation and position components using relative configurations of ee to compute wrench 
    
-    MatrixXd H_vt = H_v0*H_0t;             
+   MatrixXd H_vt = H_v0*H_0t;             
     
 
     // extracting rotaional Rvt and translational pvt part from Hvt for further calculating wrench 
-    MatrixXd R_vt = H_vt.block(0,0,3,3);
+   MatrixXd R_vt = H_vt.block(0,0,3,3);
 
-    MatrixXd p_vt = H_vt.block(0,3,3,1);
+   MatrixXd p_vt = H_vt.block(0,3,3,1);
 
-    MatrixXd R_tv = R_vt.transpose(); 
+   MatrixXd R_tv = R_vt.transpose(); 
 
     // converting position vector to skew-symmetric matrix
     //MatrixXd tilde_p_vt = [0 -p_vt(3,1) p_vt(2,1);p_vt(3,1) 0 -p_vt(1,1);-p_vt(2,1) p_vt(1,1) 0];
-    MatrixXd tilde_p_vt(3,3); 
-    tilde_p_vt << 0,-p_vt(2,0),p_vt(1,0),p_vt(2,0),0,-p_vt(0,0),-p_vt(1,0),p_vt(0,0),0;
+   MatrixXd tilde_p_vt(3,3); 
+   tilde_p_vt << 0,-p_vt(2,0),p_vt(1,0),p_vt(2,0),0,-p_vt(0,0),-p_vt(1,0),p_vt(0,0),0;
 
             // mass matrix tiago arm
             /* M =    */           // in matlab used m = 1 and then M = m * eye(6);
@@ -484,20 +435,20 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //inertia_mat.setZero();
             
             
-     Eigen::MatrixXd Mass;    //inertia matrix
-     Mass.resize(joint_names_.size(), joint_names_.size());
-     Mass.setZero();
-     RigidBodyDynamics::CompositeRigidBodyAlgorithm(rbdl_model_, q_act_, Mass, false);
+   Eigen::MatrixXd Mass;    //inertia matrix
+   Mass.resize(joint_names_.size(), joint_names_.size());
+   Mass.setZero();
+   RigidBodyDynamics::CompositeRigidBodyAlgorithm(rbdl_model_, q_act_, Mass, false);
             
             
             // Jacobian 
             /* Jacobian =    */           // in matlab used Jacobian = eye(6) here used the current ee position to calculate jacobian
      //std::string link_name = "arm_left_tool_link";  //arm_left_tool_link
      //unsigned int tip_id = rbdl_model_.GetBodyId(link_name.c_str());
-     Eigen::MatrixXd jacobian;      // jacobian initialization
-     jacobian.resize(6, joint_names_.size());
-     jacobian.setZero();
-     RigidBodyDynamics::CalcPointJacobian6D(rbdl_model_, q_act_, tip_id,
+   Eigen::MatrixXd jacobian;      // jacobian initialization
+   jacobian.resize(6, joint_names_.size());
+   jacobian.setZero();
+   RigidBodyDynamics::CalcPointJacobian6D(rbdl_model_, q_act_, tip_id,
                                              Eigen::Vector3d(0, 0, 0), jacobian, false);  
 
             
@@ -506,29 +457,29 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //Voi = -(trace(Goi*Rvt));
             //Vci = trace(Gci*Rtv*skewness(pvt);
 
-     int Vti = (-1/4*(tilde_p_vt*Gti*tilde_p_vt).trace())-(1/4*(tilde_p_vt*R_vt*Gti*R_tv*tilde_p_vt).trace());
-     int Voi = -((Goi*R_vt).trace());
-     int Vci = ((Gci*R_tv*tilde_p_vt).trace());
+   int Vti = (-1/4*(tilde_p_vt*Gti*tilde_p_vt).trace())-(1/4*(tilde_p_vt*R_vt*Gti*R_tv*tilde_p_vt).trace());
+   int Voi = -((Goi*R_vt).trace());
+   int Vci = ((Gci*R_tv*tilde_p_vt).trace());
 
 
-     int V_pi = Vti + Voi + Vci;         // initial potential energy
+   int V_pi = Vti + Voi + Vci;         // initial potential energy
 
-     int T_k = 1/2*qdot_.transpose() * Mass * qdot_;        // transpose of qdot x M x qdot
+   int T_k = 1/2*qdot_.transpose() * Mass * qdot_;        // transpose of qdot x M x qdot
 
-     int E_tot = T_k + V_pi;               // initial energy of the system
+   int E_tot = T_k + V_pi;               // initial energy of the system
      
-     int lamba_;
+   int lamba_;
 
-     if (E_tot > Emax)  
-        lamba_ = (Emax - T_k)/ V_pi;
-     else
-        lamba_ = 1;
-     return;
+   if (E_tot > Emax)  
+      lamba_ = (Emax - T_k)/ V_pi;
+   else
+      lamba_ = 1;
+   return;
             // calculation of new co-stiffness matrices and corresponding potential energy
 
-     MatrixXd Go = lamba_ * Goi;           // new co-stiffness matrices
-     MatrixXd Gt = lamba_ * Gti;
-     MatrixXd Gc = lamba_ * Gci;
+   MatrixXd Go = lamba_ * Goi;           // new co-stiffness matrices
+   MatrixXd Gt = lamba_ * Gti;
+   MatrixXd Gc = lamba_ * Gci;
 
             //Vt = -0.25*trace(skewness(pvt)*Gt*skewness(pvt) -0.25*trace(skewness(pvt)*Rvt*Gt*Rtv*skewness(pvt);
             //Vo = -(trace(Go*Rvt));
@@ -538,13 +489,13 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
      //int Vo = -((Go*Rvt).trace());
      //int Vc = ((Gc*Rtv*pvt_s).trace());
      
-     int Vt = (-1/4*(tilde_p_vt*Gt*tilde_p_vt).trace())-(1/4*(tilde_p_vt*R_vt*Gt*R_tv*tilde_p_vt).trace());
-     int Vo = -((Go*R_vt).trace());
-     int Vc = ((Gc*R_tv*tilde_p_vt).trace());
+   int Vt = (-1/4*(tilde_p_vt*Gt*tilde_p_vt).trace())-(1/4*(tilde_p_vt*R_vt*Gt*R_tv*tilde_p_vt).trace());
+   int Vo = -((Go*R_vt).trace());
+   int Vc = ((Gc*R_tv*tilde_p_vt).trace());
 
 
-     int V_p = Vt + Vo + Vc;         // potential energy
-     E_tot = T_k + V_p;            // total energy of the system
+   int V_p = Vt + Vo + Vc;         // potential energy
+   E_tot = T_k + V_p;            // total energy of the system
                 
             // Wrench applied on manipulator end effector due to spring can now be calculated as follows
             // Wt = [mt ft]T
@@ -562,35 +513,35 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
             //t = [tG(3,2); tG(1,3); tG(2,1)];
 
      // Rotational part of wrench
-     MatrixXd tilde_m_t = - 2* 1/2*(Go*R_vt-(Go*R_vt).transpose())-1/2*(Gt*R_tv*tilde_p_vt*tilde_p_vt*R_vt-    (Gt*R_tv*tilde_p_vt*tilde_p_vt*R_vt).transpose())-2*1/2*(Gc*tilde_p_vt*R_vt-(Gc*tilde_p_vt*R_vt).transpose());
-     VectorXd m_t(3,1); 
+   MatrixXd tilde_m_t = - 2* 1/2*(Go*R_vt-(Go*R_vt).transpose())-1/2*(Gt*R_tv*tilde_p_vt*tilde_p_vt*R_vt-    (Gt*R_tv*tilde_p_vt*tilde_p_vt*R_vt).transpose())-2*1/2*(Gc*tilde_p_vt*R_vt-(Gc*tilde_p_vt*R_vt).transpose());
+   VectorXd m_t(3,1); 
      //m_t = [tilde_m_t(3,2); tilde_m_t(1,3); tilde_m_t(2,1)];   in matlab
-     m_t << tilde_m_t(2,1),tilde_m_t(0,2),tilde_m_t(1,0);
+   m_t << tilde_m_t(2,1),tilde_m_t(0,2),tilde_m_t(1,0);
 
      // Translational part of wrench
-     MatrixXd tilde_f_t = -R_tv * 1/2*(Gt*tilde_p_vt- (Gt*tilde_p_vt).transpose())*R_vt-1/2*(Gt*R_tv*tilde_p_vt*R_vt-(Gt*R_tv*tilde_p_vt*R_vt).transpose())-2*1/2*(Gc*R_vt-(Gc*R_vt).transpose());
-     VectorXd f_t(3,1);
+   MatrixXd tilde_f_t = -R_tv * 1/2*(Gt*tilde_p_vt- (Gt*tilde_p_vt).transpose())*R_vt-1/2*(Gt*R_tv*tilde_p_vt*R_vt-(Gt*R_tv*tilde_p_vt*R_vt).transpose())-2*1/2*(Gc*R_vt-(Gc*R_vt).transpose());
+   VectorXd f_t(3,1);
      //f_t = [tilde_f_t(3,2); tilde_f_t(1,3); tilde_f_t(2,1)];   in matlab
-     f_t << tilde_f_t(2,1),tilde_f_t(0,2),tilde_f_t(1,0);
+   f_t << tilde_f_t(2,1),tilde_f_t(0,2),tilde_f_t(1,0);
             
-     VectorXd Wt(6,1);           // wrench vector initialization
-     Wt << 0,0,0,0,0,0; 
+   VectorXd Wt(6,1);           // wrench vector initialization
+   Wt << 0,0,0,0,0,0; 
     
-     Wt.block(0,0,3,1) = m_t;          // Wsn0(1:3,1) = t ... t represented with small m here;
-     Wt.block(3,0,3,1) = f_t;          // Wsn0(4:6,1) = f; 
+   Wt.block(0,0,3,1) = m_t;          // Wsn0(1:3,1) = t ... t represented with small m here;
+   Wt.block(3,0,3,1) = f_t;          // Wsn0(4:6,1) = f; 
 
-     MatrixXd tilde_p_0t(3,3);
-     tilde_p_0t << 0,-p_0t(2,0),p_0t(1,0),p_0t(2,0),0,-p_0t(0,0),-p_0t(1,0),p_0t(0,0),0;
+   MatrixXd tilde_p_0t(3,3);
+   tilde_p_0t << 0,-p_0t(2,0),p_0t(1,0),p_0t(2,0),0,-p_0t(0,0),-p_0t(1,0),p_0t(0,0),0;
 
-     MatrixXd AdjT_H_t0(6,6);
-     AdjT_H_t0.fill(0);
+   MatrixXd AdjT_H_t0(6,6);
+   AdjT_H_t0.fill(0);
 
-     AdjT_H_t0.block(0,0,3,3) = R_0t;
-     AdjT_H_t0.block(0,3,3,3) = tilde_p_0t*R_0t;
-     AdjT_H_t0.block(3,3,3,3) = R_0t;
+   AdjT_H_t0.block(0,0,3,3) = R_0t;
+   AdjT_H_t0.block(0,3,3,3) = tilde_p_0t*R_0t;
+   AdjT_H_t0.block(3,3,3,3) = R_0t;
 
-     VectorXd W0(6,1);           // wrench vector transformation of 
-     W0 = AdjT_H_t0* Wt;     
+   VectorXd W0(6,1);           // wrench vector transformation of 
+   W0 = AdjT_H_t0* Wt;     
 
 
      //Matrix6d AdjT_H_t0 = Matrix6d::Identity();
@@ -613,36 +564,36 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
            
      // Power of the System 
      
-     int pc = ((jacobian.transpose() * W0 - Bi * qdot_).transpose()) * qdot_ ;  // Initial power of the controller
+   int pc = ((jacobian.transpose() * W0 - Bi * qdot_).transpose()) * qdot_ ;  // Initial power of the controller
      
-     int beta;
-     if (pc > Pmax) 
-          int beta = (((((jacobian.transpose()) * W0).transpose())*qdot_) - Pmax)/ ((qdot_.transpose())*Bi*qdot_);
-     else
-          int beta = 1; 
-     return;
+   int beta;
+   if (pc > Pmax) 
+        int beta = (((((jacobian.transpose()) * W0).transpose())*qdot_) - Pmax)/ ((qdot_.transpose())*Bi*qdot_);
+   else
+        int beta = 1; 
+   return;
 
      // New joint damping matrix using scaling parameter beta
-     MatrixXd B = beta * Bi;
+   MatrixXd B = beta * Bi;
 
      // New power of the controller using new joint damping matrix
-     tau_cmd_ = ((jacobian.transpose()) * W0) - B * qdot_;                    // Controller force
+   tau_cmd_ = ((jacobian.transpose()) * W0) - B * qdot_;                    // Controller force
 
-     pc = (tau_cmd_.transpose()) * qdot_ ;      // Power of the controller
+   pc = (tau_cmd_.transpose()) * qdot_ ;      // Power of the controller
 
 
-     std::vector<double> s0;
+   std::vector<double> s0;
      //std::vector<double> s_i;
      //s_i.resize(1, joint_names_.size());
      //s_i << 12,12,12,0,0,0,0;  
      //s0.resize(1, joint_names_.size());
-     s0[0] = sqrt(2*12);
-     s0[1] = sqrt(2*12);
-     s0[2] = sqrt(2*12);
-     s0[3] = sqrt(2*0);
-     s0[4] = sqrt(2*0);
-     s0[5] = sqrt(2*0);
-     s0[6] = sqrt(2*0);
+   s0[0] = sqrt(2*12);
+   s0[1] = sqrt(2*12);
+   s0[2] = sqrt(2*12);
+   s0[3] = sqrt(2*0);
+   s0[4] = sqrt(2*0);
+   s0[5] = sqrt(2*0);
+   s0[6] = sqrt(2*0);
 
            // Run integrator with rk4 stepper
            //std::cout << "==========  rk4 - basic stepper  ====================" << std::endl;
@@ -656,41 +607,41 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
            //state_type integrate_adaptive< Stepper::stepper, System system, State &start_state, Time start_time , Time end_time , Time dt >
            //{
            //return 
-     state_type integrate_adaptive();
+   state_type integrate_adaptive();
            // stepper_type() , my_system , s , t0 , t1 , dt , null_observer() );
            //}
 
-     int s1 = s0[0];
-     int s2 = s0[1];     
-     int s3 = s0[2];
-     int s4 = s0[3];
-     int s5 = s0[4];
-     int s6 = s0[5];
-     int s7 = s0[6];
+   int s1 = s0[0];
+   int s2 = s0[1];     
+   int s3 = s0[2];
+   int s4 = s0[3];
+   int s5 = s0[4];
+   int s6 = s0[5];
+   int s7 = s0[6];
 
      // Controller torques for each joint
-     tauc[0] = tau_cmd_[0];
-     tauc[1] = tau_cmd_[1];
-     tauc[2] = tau_cmd_[2];
-     tauc[3] = tau_cmd_[3];
-     tauc[4] = tau_cmd_[4];
-     tauc[5] = tau_cmd_[5];
-     tauc[6] = tau_cmd_[6];
+   tauc[0] = tau_cmd_[0];
+   tauc[1] = tau_cmd_[1];
+   tauc[2] = tau_cmd_[2];
+   tauc[3] = tau_cmd_[3];
+   tauc[4] = tau_cmd_[4];
+   tauc[5] = tau_cmd_[5];
+   tauc[6] = tau_cmd_[6];
           
 
            //return detail::integrate_adaptive(stepper, system, start_state, start_time, end_time, dt)
            // Potential energy in each tank, an energy tank is modeled as a spring with const stiffness k = 1
            // connected to robot through a transmission unit 
            // so H = 0.5*k*s^2 ==> H = 0.5*s^2 
-     H[0] = 0.5*s1*s1;
-     H[1] = 0.5*s2*s2;
-     H[2] = 0.5*s3*s3;
-     H[3] = 0.5*s4*s4;
-     H[4] = 0.5*s5*s5;
-     H[5] = 0.5*s6*s6;
-     H[6] = 0.5*s7*s7;           
+   H[0] = 0.5*s1*s1;
+   H[1] = 0.5*s2*s2;
+   H[2] = 0.5*s3*s3;
+   H[3] = 0.5*s4*s4;
+   H[4] = 0.5*s5*s5;
+   H[5] = 0.5*s6*s6;
+   H[6] = 0.5*s7*s7;           
 
-     int Htot = H[0] + H[1] + H[2] + H[3] + H[4] + H[5] + H[6];     // Total energy in tanks
+   int Htot = H[0] + H[1] + H[2] + H[3] + H[4] + H[5] + H[6];     // Total energy in tanks
 
      // Power of the controller on each joint
      //pc[0] = tauc[0] * qdot_[0];
@@ -704,72 +655,121 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
            
            // transmission unit allows power flow from controller to robot and it is regulated by ratio u
            // transmission variable
-     if ((H[0] > epsilon))     // || (pc[0] < 0)
+   if ((H[0] > epsilon))     // || (pc[0] < 0)
 
           u_vec[0]=-tauc[0]/s0[0];
-     else
+   else
 
           u_vec[0]=(-tauc[0]/gamma*gamma)*s0[0];
-     return;
+   return;
 
-     if ((H[1] > epsilon))    // || (pc[1] < 0)
+   if ((H[1] > epsilon))    // || (pc[1] < 0)
 
           u_vec[1]=-tauc[1]/s0[1];
-     else
+   else
 
           u_vec[1]=((-tauc[1])/gamma*gamma)*s0[1];
-     return;
+   return;
 
-     if ((H[2] > epsilon))   // || (pc[2] < 0)
+   if ((H[2] > epsilon))   // || (pc[2] < 0)
 
           u_vec[2]=-tauc[2]/s0[2];
-     else
+   else
 
           u_vec[2]=(-tauc[2]/gamma*gamma)*s0[2];
-     return;
+   return;
 
-     if ((H[3] > epsilon))   // || (pc[3] < 0)
+   if ((H[3] > epsilon))   // || (pc[3] < 0)
 
           u_vec[3]=-tauc[3]/s0[3];
-     else
+   else
 
           u_vec[3]=(-tauc[3]/gamma*gamma)*s0[3];
-     return;
+   return;
 
-     if ((H[4] > epsilon))   // || (pc[4] < 0)
+   if ((H[4] > epsilon))   // || (pc[4] < 0)
 
           u_vec[4]=-tauc[4]/s0[4];
-     else
+   else
 
           u_vec[4]=(-tauc[4]/gamma*gamma)*s0[4]; 
-     return;
+   return;
 
-     if ((H[5] > epsilon))  // || (pc[5] < 0)
+   if ((H[5] > epsilon))  // || (pc[5] < 0)
 
           u_vec[5]=-tauc[5]/s0[5];
-     else
+   else
 
           u_vec[5]=(-tauc[5]/gamma*gamma)*s0[5];
-     return;
+   return;
 
-     if ((H[6] > epsilon))  // || (pc[6] < 0)
+   if ((H[6] > epsilon))  // || (pc[6] < 0)
 
           u_vec[6]=-tauc[6]/s0[6];
-     else
+   else
 
           u_vec[6]=(-tauc[6]/gamma*gamma)*s0[6];
-     return;
+   return;
 
      //VectorXd W0(6,1);
-     u_vec << u_vec[0],u_vec[1],u_vec[2],u_vec[3],u_vec[4],u_vec[5],u_vec[6];
-     H << H[0],H[1],u_vec[2],u_vec[3],u_vec[4],u_vec[5],u_vec[6]; 
+   u_vec << u_vec[0],u_vec[1],u_vec[2],u_vec[3],u_vec[4],u_vec[5],u_vec[6];
+   H << H[0],H[1],u_vec[2],u_vec[3],u_vec[4],u_vec[5],u_vec[6]; 
 
            //u=[u1;u2;u3;u4;u5;u6];
 
 
-     // For all the joints...
-     for (size_t i = 0; i < joint_names_.size(); ++i)
-     {
+   // For all the joints...
+  for (size_t i = 0; i < joint_names_.size(); ++i)
+  {
+
+    tau[i] = - u_vec[i] * s0[i];
+    // ...check those one that are actuated
+    if (joint_types_[joint_names_[i]] == JointType::ACTUATED)
+    {
+      // Translate the calculated torque to desired effort by integrating the frictions of
+      // the motor + the ger ration + motor constants
+      ActuatedJoint& actuated_joint = actuated_joints_[joint_names_[i]];
+      double desired_torque = tau[i];   
+      double actual_velocity = actuated_joint.joint_handle.getVelocity();
+
+      desired_torque += actuated_joint.friction_parameters.viscous_friction * actual_velocity;
+      if (actual_velocity > actuated_joint.friction_parameters.velocity_tolerance)
+        desired_torque += actuated_joint.friction_parameters.static_friction;
+      else
+        desired_torque -= actuated_joint.friction_parameters.static_friction;
+
+      double desired_effort =
+          desired_torque / (actuated_joint.actuator_parameters.motor_torque_constant *
+                            actuated_joint.actuator_parameters.reduction_ratio);
+
+      if (std::isnan(desired_effort))  // If desired effort is not valid
+      {
+        ROS_ERROR_STREAM("Desired effort is not valid for joint "
+                         << joint_names_[i] << " = " << desired_effort);
+        return;
+      }
+      else
+      {
+        // Command an effort to the joint via ros_cotrol interface
+        actuated_joint.joint_handle.setCommand(1.01 * desired_effort);
+      }
+    }
+    else if (joint_types_[joint_names_[i]] == JointType::ACTUATED_NO_CONTROL)
+    {
+      // ...and those one that are constantly commanded to zero
+      // Send zero effort command via ros control interce
+      actuated_joints_[joint_names_[i]].joint_handle.setCommand(0);
+    }
+  }
+
+
+
+
+
+/* not right because the torso joint needs position joint interface so need to use joint maps as it is
+
+   for (size_t i = 0; i < joint_names_.size(); ++i)
+   {
          tau[i] = - u_vec[i] * s0[i];
          double output_torque = tau[i];
 
@@ -794,8 +794,8 @@ void MyEnergyShapingPositionController::update(const ros::Time& time, const ros:
                    // Command an effort to the joint via ros_cotrol interface
              joint_handle.setCommand(output_torque);
          }
-      }
-
+    }
+*/
            //return;   
             //for (size_t i = 0; i < joint_handles_.size(); i++) 
             //{
