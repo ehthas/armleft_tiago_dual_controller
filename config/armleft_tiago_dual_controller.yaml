@@ -2,32 +2,38 @@ type: "armleft_tiago_dual_controller/MyEnergyShapingPositionController"
 robot_model_chains: ["gripper_left_link"]
 dt: 0.01
 
+viscous_friction: 0.0
+velocity_tolerance: 0.0
+static_friction: 0.0
+
 joints:
-    - arm_left_1_joint
-    - arm_left_2_joint
-    - arm_left_3_joint
-    - arm_left_4_joint
-    - arm_left_5_joint
-    - arm_left_6_joint
-    - arm_left_7_joint
-
-
-#    - jright_shoulder_rotz
-#    - jright_shoulder_roty
-#    - jright_shoulder_rotx
-#    - jright_forearm_rotz
-#    - jright_forearm_roty
-#    - jright_wrist_rotz
-#    - jright_wrist_rotx
-
-#robot_model_chains: ["gripper_left_link"]
-#dt: 0.01
-
-#    - torso_lift_joint
-#    - arm_left_1_joint
-#    - arm_left_2_joint
-#    - arm_left_3_joint
-#    - arm_left_4_joint
-#    - arm_left_5_joint
-#    - arm_left_6_joint
-#    - arm_left_7_joint
+  torso_lift_joint:
+    type: actuated
+  arm_left_1_joint:
+    type: actuated
+    motor_torque_constant: 1.0
+    reduction_ratio: 1.0
+  arm_left_2_joint:
+    type: actuated
+    motor_torque_constant: 1.0     #0.136
+    reduction_ratio: 1.0           #100.0
+  arm_left_3_joint:
+    type: actuated
+    motor_torque_constant: 1.0     #-0.087
+    reduction_ratio: 1.0           #100.0
+  arm_left_4_joint:
+    type: actuated
+    motor_torque_constant: 1.0     #-0.087
+    reduction_ratio: 1.0           #100
+  arm_left_5_joint:
+    type: actuated
+    motor_torque_constant: 1.0
+    reduction_ratio: 1.0
+  arm_left_6_joint:
+    type: actuated
+    motor_torque_constant: 1.0
+    reduction_ratio: 1.0
+  arm_left_7_joint:
+    type: actuated
+    motor_torque_constant: 1.0
+    reduction_ratio: 1.0
